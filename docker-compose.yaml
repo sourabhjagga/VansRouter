@@ -1,0 +1,106 @@
+# VansRouter - Coolify Ready Docker Compose
+# ============================================================
+# Repository: https://github.com/sourabhjagga/VansRouter (fork of Vanszs/VansRouter)
+# Image Registry: ghcr.io/vanszs/vansrouter:latest (public, no login required)
+# Coolify Build Pack: Docker Compose
+# ============================================================
+# COOLIFY DEPLOYMENT INSTRUCTIONS:
+# 1. Coolify -> Create New Resource -> Docker Compose -> Paste this repo URL: https://github.com/sourabhjagga/VansRouter
+# 2. Branch: main, Compose File: docker-compose.yaml
+# 3. In Coolify Environment Variables, SET these (required):
+#    JWT_SECRET=<generate: openssl rand -hex 32>
+#    INITIAL_PASSWORD=<your dashboard password>
+#    API_KEY_SECRET=<generate: openssl rand -hex 32>
+#    BASE_URL=http://YOUR_SERVER_IP:20128
+#    NEXT_PUBLIC_BASE_URL=http://YOUR_SERVER_IP:20128
+# 4. Port Setting: VansRouter runs on 20128 inside container, mapped to host 20128.
+#    Verified FREE on both Oracle servers (checked via Coolify API on 2026-09-01):
+#    Existing host ports in use: 3000 (gpuvista), 3001 (managedcloudvps), 3002 (briefing-agent),
+#    3005 (openchamber), 5000 (webssh), 8090 (beszel), 8787 (headroom-proxy) -> 20128 is safe.
+#    Headroom sidecar internal port 8787 mapped to host 8788 to avoid conflict with existing 8787 service.
+# 5. Health Check: Docker healthcheck included below (wget spider http://localhost:20128/).
+#    Coolify will auto-detect it (custom_healthcheck_found=true). No extra Coolify healthcheck needed.
+#    If you add one manually in Coolify UI: Path=/, Port=20128, Expected status 200.
+# 6. Open Access for all apps on both Oracle servers:
+#    - Ports are bound to 0.0.0.0 (all interfaces) so any app on same host or Tailscale network (10.0.0.0/24)
+#      can reach http://HOST_IP:20128 or http://10.0.0.x:20128.
+#    - No firewall restriction inside compose. Ensure Oracle Cloud Security List / iptables / ufw allows
+#      ingress 20128/tcp and 8788/tcp from 0.0.0.0/0 or at least 10.0.0.0/24 (Tailscale).
+#      Example on host: sudo ufw allow 20128/tcp && sudo ufw allow 8788/tcp
+#    - If you use Coolify's Traefik proxy, leave Domains empty for raw port access, or set a domain
+#      (e.g., router.yourdomain.com) and map to port 20128 via Coolify Domains.
+# 7. Persistence: Named volume 9router-data stores SQLite DB at /app/data. Do not delete volume on redeploy.
+# ============================================================
+
+services:
+  vansrouter:
+    image: ghcr.io/vanszs/vansrouter:latest
+    container_name: vansrouter
+    restart: unless-stopped
+    ports:
+      # Bind to all interfaces (0.0.0.0) so other Oracle server over Tailscale can connect.
+      # Host port 20128 verified free on both servers (checked Coolify API).
+      - "0.0.0.0:${PORT:-20128}:20128"
+    volumes:
+      - 9router-data:/app/data
+      # Optional: reuse host Tailscale socket instead of bundled daemon (uncomment if needed):
+      # - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+      PORT: "20128"
+      HOSTNAME: "0.0.0.0"
+      NODE_ENV: production
+      # Headroom sidecar URL (internal Docker network, not host port)
+      HEADROOM_URL: http://headroom:8787
+      # The following are injected from Coolify Environment Variables.
+      # Fallbacks below are for local docker compose up only; set real values in Coolify.
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret}
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD:-123456}
+      API_KEY_SECRET: ${API_KEY_SECRET:-change-me-in-production}
+      BASE_URL: ${BASE_URL:-http://localhost:20128}
+      NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL:-http://localhost:20128}
+      CLOUD_URL: ${CLOUD_URL:-https://9router.com}
+      NEXT_PUBLIC_CLOUD_URL: ${NEXT_PUBLIC_CLOUD_URL:-https://9router.com}
+    depends_on:
+      headroom:
+        condition: service_started
+    healthcheck:
+      # Coolify-compatible healthcheck: checks local HTTP endpoint
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:20128/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Ensure Coolify network access
+    networks:
+      - coolify
+    labels:
+      - coolify.managed=true
+
+  headroom:
+    image: ghcr.io/chopratejas/headroom:latest
+    container_name: headroom
+    restart: unless-stopped
+    ports:
+      # Host 8788 -> Container 8787 (8787 already used by headroom-proxy on localhost)
+      - "0.0.0.0:${HEADROOM_PORT:-8788}:8787"
+    networks:
+      - coolify
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8787/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  9router-data:
+    name: 9router-data
+
+networks:
+  coolify:
+    external: true
+    name: coolify
+
