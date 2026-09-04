@@ -18,7 +18,7 @@
 #    Existing host ports in use: 3000 (gpuvista), 3001 (managedcloudvps), 3002 (briefing-agent),
 #    3005 (openchamber), 5000 (webssh), 8090 (beszel), 8787 (headroom-proxy) -> 20128 is safe.
 #    Headroom sidecar internal port 8787 mapped to host 8788 to avoid conflict with existing 8787 service.
-# 5. Health Check: Docker healthcheck included below (wget spider http://localhost:20128/).
+# 5. Health Check: Docker healthcheck included below (wget spider http://127.0.0.1:20128/).
 #    Coolify will auto-detect it (custom_healthcheck_found=true). No extra Coolify healthcheck needed.
 #    If you add one manually in Coolify UI: Path=/, Port=20128, Expected status 200.
 # 6. Open Access for all apps on both Oracle servers:
@@ -68,7 +68,7 @@ services:
         condition: service_started
     healthcheck:
       # Coolify-compatible healthcheck: checks local HTTP endpoint
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:20128/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:20128/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -89,7 +89,7 @@ services:
     networks:
       - coolify
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8787/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8787/"]
       interval: 30s
       timeout: 5s
       retries: 3
