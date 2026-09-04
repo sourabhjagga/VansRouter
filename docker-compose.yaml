@@ -35,6 +35,7 @@
 services:
   vansrouter:
     image: ghcr.io/vanszs/vansrouter:latest
+    pull_policy: always
     container_name: vansrouter
     restart: unless-stopped
     ports:
@@ -81,6 +82,7 @@ services:
 
   headroom:
     image: ghcr.io/chopratejas/headroom:latest
+    pull_policy: always
     container_name: headroom
     restart: unless-stopped
     ports:
