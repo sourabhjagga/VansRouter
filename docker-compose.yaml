@@ -44,6 +44,9 @@ services:
       - "0.0.0.0:${PORT:-20128}:20128"
     volumes:
       - 9router-data:/app/data
+      # Compatibility source for pre-v0.91.22 named-volume installs (see upstream docker-compose.yml).
+      # The entrypoint copies only missing files into the canonical volume.
+      - vansrouter-data:/migration-data:ro
       # Optional: reuse host Tailscale socket instead of bundled daemon (uncomment if needed):
       # - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock
     env_file:
@@ -100,6 +103,8 @@ services:
 volumes:
   9router-data:
     name: 9router-data
+  vansrouter-data:
+    name: vansrouter-data
 
 networks:
   coolify:
