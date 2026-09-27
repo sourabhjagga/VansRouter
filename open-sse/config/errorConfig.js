@@ -52,6 +52,9 @@ export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 const COOLDOWN = {
   long: 2 * 60 * 1000,
   short: 5 * 1000,
+  // Google wants a human to verify the account; it keeps 403ing until they do, so
+  // a short retry just burns a fallback slot. 24h = top of the plugin's ladder.
+  verification: 24 * 60 * 60 * 1000,
 };
 
 /**
@@ -73,6 +76,12 @@ export const ERROR_RULES = [
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
   { text: "request not allowed",      cooldownMs: COOLDOWN.short },
   { text: "improperly formed request", cooldownMs: COOLDOWN.long },
+  // Must sit above the generic 403 status rule below. Antigravity/Gemini
+  // Code Assist answer 403 with reason VALIDATION_REQUIRED and a
+  // validation_url for the account owner to visit; quota still reads healthy,
+  // so only the error body tells you the account is unusable.
+  { text: "validation_required",      cooldownMs: COOLDOWN.verification },
+  { text: "verify your account",      cooldownMs: COOLDOWN.verification },
   { text: "rate limit",               backoff: true },
   { text: "too many requests",        backoff: true },
   { text: "quota exceeded",           backoff: true },
