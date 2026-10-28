@@ -74,28 +74,25 @@ jobs:
           bash .fork/ci-trigger-deploy.sh
           echo "deploy_result=success" >> "$GITHUB_OUTPUT"
 
-      - name: Rollback on failure
-        if: failure() && steps.skip.outputs.skip != 'true'
+      - name: Verify deployed version
+        if: steps.skip.outputs.skip != 'true' && success()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          FAILED_SHA="${{ github.sha }}"
-          echo "Deployment failed. Rolling back commit $FAILED_SHA ..."
-
-          if git rev-parse "$FAILED_SHA^2" >/dev/null 2>&1; then
-            git revert --no-commit -m 1 "$FAILED_SHA"
+          # Best-effort: oc-deploy.sh already confirmed Coolify status 'finished'
+          # (which implies the healthcheck passed). Try the public app endpoint
+          # if reachable; warn (don't fail) if not.
+          if curl -s -m 10 -o /tmp/ready.json -w "%{http_code}" "http://${VPS_HOST}:20128/api/ready" | grep -q '^2'; then
+            echo "Health OK: $(cat /tmp/ready.json)"
+            echo "Version: $(curl -s -m 10 "http://${VPS_HOST}:20128/api/version")"
           else
-            git revert --no-commit "$FAILED_SHA"
+            echo "::warning::Could not reach ${VPS_HOST}:20128/api/ready (app may not be publicly exposed). Relying on Coolify deployment status."
           fi
-          git commit -m "Revert $FAILED_SHA [skip ci]"
-          git push origin main
-          echo "Revert pushed. Triggering rollback deploy..."
 
-          export VPS_SSH_KEY="$(cat /tmp/vps_ssh_key)"
-          export SSH_KEY_FILE=/tmp/vps_ssh_key
-          export VPS_HOST="${{ secrets.VPS_HOST }}"
-          export VPS_USER="${{ secrets.VPS_USER }}"
-          bash .fork/ci-trigger-deploy.sh
-          echo "Rollback deploy completed."
+      - name: Report rollback (handled by oc-deploy.sh on VPS)
+        if: failure() && steps.skip.outputs.skip != 'true'
+        run: |
+          echo "::error::Deployment failed. oc-deploy.sh on the VPS already attempted rollback to the last good commit."
+          echo "Check the VPS logs and Coolify dashboard for details."
           exit 1

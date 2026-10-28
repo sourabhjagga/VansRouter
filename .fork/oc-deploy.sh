@@ -1,48 +1,90 @@
 #!/usr/bin/env bash
-# Runs ON THE VPS (via SSH forced command). Triggers a Coolify deployment of
-# the vans-router app using the localhost Coolify API, polls until terminal,
-# and exits 0 on success / 1 on failure. Coolify API is never exposed publicly.
+# Runs ON THE VPS (via SSH forced command). Deploys the latest vans-router
+# image via Coolify's localhost API and rolls back to the last good commit on
+# failure. Coolify API is never exposed publicly.
 #
-# Required on the VPS:
-#   - Coolify API token in $COOLIFY_TOKEN_FILE (default /etc/coolify/api-token)
-#   - jq installed
-#   - COOLIFY_APP_UUID env or default below
-set -euo pipefail
+# This mirrors the openchamber-harden reference but targets VansRouter's
+# Coolify application (UUID obw7oljvlg2siu2mzxpr6rwv).
+#
+# Exit codes:
+#   0  the deployment finished successfully
+#   1  the deployment failed (rollback attempted) or the trigger failed
+#
+# Environment (all have working defaults):
+#   COOLIFY_URL                  default http://127.0.0.1:8000
+#   COOLIFY_APPLICATION_UUID     the VansRouter application
+#   COOLIFY_TOKEN_FILE           the Coolify API token, read from disk
+#   DEPLOY_TIMEOUT               seconds to wait for the deployment
+#   POLL_INTERVAL                seconds between deployment status checks
+set -uo pipefail
 
-APP_UUID="${COOLIFY_APP_UUID:-obw7oljvlg2siu2mzxpr6rwv}"
+COOLIFY_URL="${COOLIFY_URL:-http://127.0.0.1:8000}"
+APP_UUID="${COOLIFY_APPLICATION_UUID:-obw7oljvlg2siu2mzxpr6rwv}"
 TOKEN_FILE="${COOLIFY_TOKEN_FILE:-/etc/coolify/api-token}"
-BASE="${COOLIFY_BASE_URL:-http://127.0.0.1:8000}"
+DEPLOY_TIMEOUT="${DEPLOY_TIMEOUT:-1800}"
+POLL_INTERVAL="${POLL_INTERVAL:-10}"
+
+log() { echo "[oc-deploy] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 
 if [ ! -r "$TOKEN_FILE" ]; then
-  echo "ERROR: Coolify token file not readable: $TOKEN_FILE" >&2
+  log "ERROR: cannot read the Coolify token at $TOKEN_FILE"
   exit 1
 fi
-TOKEN="$(cat "$TOKEN_FILE")"
+TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
 
-echo "=== Triggering Coolify deploy for $APP_UUID ==="
-resp=$(curl -s -m 30 -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: application/json" \
-  "${BASE}/api/v1/deploy?uuid=${APP_UUID}")
-echo "$resp"
+api() {
+  local method="$1" path="$2" body="${3:-}"
+  local args=(-sS --max-time 30 -X "$method"
+              -H "Authorization: Bearer $TOKEN"
+              -H "Accept: application/json")
+  if [ -n "$body" ]; then
+    args+=(-H "Content-Type: application/json" --data-binary "$body")
+  fi
+  curl "${args[@]}" "${COOLIFY_URL}${path}"
+}
 
-duuid=$(echo "$resp" | jq -r '.deployments[0].deployment_uuid // empty')
-if [ -z "$duuid" ]; then
-  echo "ERROR: could not parse deployment_uuid" >&2
+# Last finished deployment's commit: the version to fall back to on failure.
+last_good_commit() {
+  api GET "/api/v1/deployments/applications/${APP_UUID}" \
+    | jq -r '[.deployments[] | select(.status == "finished" and .commit != null)][0].commit // empty'
+}
+
+ROLLBACK_COMMIT="$(last_good_commit)"
+log "applying ${APP_UUID} (rollback target: ${ROLLBACK_COMMIT:-none})"
+
+TRIGGER="$(api POST "/api/v1/applications/${APP_UUID}/start")"
+DEPLOY_UUID="$(printf '%s' "$TRIGGER" | jq -r '.deployment_uuid // empty')"
+if [ -z "$DEPLOY_UUID" ]; then
+  log "ERROR: Coolify did not queue a deployment: ${TRIGGER:0:200}"
   exit 1
 fi
-echo "Deployment UUID: $duuid"
+log "deployment queued: ${DEPLOY_UUID}"
 
-echo "=== Polling deployment status (max 30 min) ==="
-for i in $(seq 1 180); do
-  st=$(curl -s -m 15 -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" \
-    "${BASE}/api/v1/deployments/${duuid}" | jq -r '.status // empty')
-  echo "[$i] status=$st"
-  case "$st" in
-    finished) echo "Deploy succeeded."; exit 0 ;;
-    failed|cancelled|canceled) echo "Deploy FAILED (status=$st)."; exit 1 ;;
+DEADLINE=$(( $(date +%s) + DEPLOY_TIMEOUT ))
+while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+  sleep "$POLL_INTERVAL"
+  STATUS="$(api GET "/api/v1/deployments/${DEPLOY_UUID}" | jq -r '.status // "unknown"')"
+  case "$STATUS" in
+    finished)
+      log "deployment ${DEPLOY_UUID} finished"
+      exit 0
+      ;;
+    failed|cancelled)
+      log "deployment ${DEPLOY_UUID} ${STATUS}, rolling back to ${ROLLBACK_COMMIT:-none}"
+      if [ -n "$ROLLBACK_COMMIT" ]; then
+        ROLLBACK="$(api POST "/api/v1/applications/${APP_UUID}/rollback" \
+          "$(jq -nc --arg commit "$ROLLBACK_COMMIT" '{commit: $commit}')")"
+        log "rollback queued: ${ROLLBACK:0:200}"
+      else
+        log "ERROR: no previous deployment to roll back to, production needs manual attention"
+      fi
+      exit 1
+      ;;
+    *)
+      log "deployment ${DEPLOY_UUID} is ${STATUS}"
+      ;;
   esac
-  sleep 10
 done
-echo "ERROR: deploy timed out after 30 minutes." >&2
+
+log "ERROR: deployment ${DEPLOY_UUID} did not finish within ${DEPLOY_TIMEOUT}s"
 exit 1
