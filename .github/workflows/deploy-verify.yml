@@ -1,0 +1,148 @@
+name: Deploy & Verify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-verify
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Skip rollback commits
+        id: skip
+        run: |
+          if echo "${{ github.event.head_commit.message }}" | grep -q '\[skip ci\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Rollback commit detected - skipping deploy."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check required secrets
+        if: steps.skip.outputs.skip != 'true'
+        env:
+          COOLIFY_API_URL: ${{ secrets.COOLIFY_API_URL }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+        run: |
+          set -euo pipefail
+          for v in COOLIFY_API_URL COOLIFY_API_TOKEN COOLIFY_APP_UUID; do
+            if [ -z "${!v:-}" ]; then
+              echo "::error::Missing GitHub secret $v. Add it under Settings -> Secrets and variables -> Actions."
+              exit 1
+            fi
+          done
+          echo "All required secrets present."
+
+      - name: Trigger Coolify deploy
+        if: steps.skip.outputs.skip != 'true'
+        id: trigger
+        env:
+          COOLIFY_API_URL: ${{ secrets.COOLIFY_API_URL }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+        run: |
+          set -euo pipefail
+          resp=$(curl -s -m 30 -X POST \
+            -H "Authorization: Bearer $COOLIFY_API_TOKEN" \
+            -H "Accept: application/json" \
+            "${COOLIFY_API_URL%/}/api/v1/deploy?uuid=$COOLIFY_APP_UUID")
+          echo "Trigger response: $resp"
+          duuid=$(echo "$resp" | jq -r '.deployments[0].deployment_uuid // empty')
+          if [ -z "$duuid" ]; then
+            echo "::error::Could not parse deployment_uuid from response."
+            exit 1
+          fi
+          echo "deployment_uuid=$duuid" >> "$GITHUB_OUTPUT"
+
+      - name: Poll deployment status
+        if: steps.skip.outputs.skip != 'true'
+        id: poll
+        env:
+          COOLIFY_API_URL: ${{ secrets.COOLIFY_API_URL }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          duuid="${{ steps.trigger.outputs.deployment_uuid }}"
+          status=""
+          for i in $(seq 1 180); do
+            resp=$(curl -s -m 15 -H "Authorization: Bearer $COOLIFY_API_TOKEN" -H "Accept: application/json" \
+              "${COOLIFY_API_URL%/}/api/v1/deployments/$duuid")
+            status=$(echo "$resp" | jq -r '.status // empty')
+            echo "[$i] status=$status"
+            case "$status" in
+              finished) echo "deploy_status=finished" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              failed|cancelled|canceled) echo "deploy_status=$status" >> "$GITHUB_OUTPUT"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "deploy_status=timeout" >> "$GITHUB_OUTPUT"
+          echo "::error::Deployment did not finish within 30 minutes."
+          exit 1
+
+      - name: Verify deployed version
+        if: steps.skip.outputs.skip != 'true' && steps.poll.outputs.deploy_status == 'finished'
+        env:
+          COOLIFY_API_URL: ${{ secrets.COOLIFY_API_URL }}
+        run: |
+          set -euo pipefail
+          url="${COOLIFY_API_URL%/}"
+          app_url="${url%:*}:20128"
+          if curl -s -m 10 -o /tmp/ready.json -w "%{http_code}" "$app_url/api/ready" | grep -q '^2'; then
+            echo "Health OK: $(cat /tmp/ready.json)"
+            echo "Version: $(curl -s -m 10 "$app_url/api/version")"
+          else
+            echo "::warning::Could not reach $app_url/api/ready (app may not be publicly exposed). Relying on Coolify deployment status."
+          fi
+
+      - name: Rollback on failure
+        if: failure() && steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          FAILED_SHA="${{ github.sha }}"
+          echo "Deployment failed. Rolling back commit $FAILED_SHA ..."
+
+          if git rev-parse "$FAILED_SHA^2" >/dev/null 2>&1; then
+            git revert --no-commit -m 1 "$FAILED_SHA"
+          else
+            git revert --no-commit "$FAILED_SHA"
+          fi
+          git commit -m "Revert $FAILED_SHA [skip ci]"
+          git push origin main
+          echo "Revert pushed. Triggering rollback deploy..."
+
+          resp=$(curl -s -m 30 -X POST \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
+            -H "Accept: application/json" \
+            "${{ secrets.COOLIFY_API_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}")
+          duuid=$(echo "$resp" | jq -r '.deployments[0].deployment_uuid // empty')
+          echo "Rollback deployment_uuid=$duuid"
+
+          for i in $(seq 1 180); do
+            st=$(curl -s -m 15 -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" -H "Accept: application/json" \
+              "${{ secrets.COOLIFY_API_URL }}/api/v1/deployments/$duuid" | jq -r '.status // empty')
+            echo "[$i] rollback status=$st"
+            case "$st" in
+              finished) echo "Rollback succeeded."; exit 1 ;;
+              failed|cancelled|canceled) echo "::error::Rollback deploy also failed."; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Rollback deploy timed out."
+          exit 1
