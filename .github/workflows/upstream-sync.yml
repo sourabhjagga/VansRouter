@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: upstream-sync
@@ -106,3 +107,35 @@ jobs:
       - name: Push
         if: steps.sync.outputs.do_sync == 'true'
         run: git push origin main
+
+      # GitHub does not create new workflow runs for pushes made with the
+      # repository's own GITHUB_TOKEN (documented anti-recursion behavior).
+      # The Deploy & Verify workflow triggers on `push`, so that push above
+      # never reaches it. We therefore trigger it explicitly via the
+      # workflow_dispatch REST API, which always creates a run.
+      # This requires no extra secret: the default GITHUB_TOKEN has
+      # `actions:write` scope for workflow_dispatch calls on the same repo.
+      - name: Trigger Deploy & Verify
+        if: steps.sync.outputs.do_sync == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching Deploy & Verify via workflow_dispatch API..."
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /tmp/dispatch_resp.json -w "%{http_code}" -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/deploy-verify.yml/dispatches" \
+              -d '{"ref":"main"}')
+            echo "Attempt ${attempt}: HTTP ${code} $(cat /tmp/dispatch_resp.json)"
+            if [ "$code" = "204" ]; then
+              echo "Deploy & Verify dispatched successfully."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Failed to dispatch Deploy & Verify (expected 204)."
+          echo "The merge is pushed but NOT deployed — run Deploy & Verify manually from the Actions tab."
+          exit 1
