@@ -454,6 +454,27 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
 
   try {
     switch (connection.provider) {
+      case "commandcode": {
+        const res = await fetchWithConnectionProxy(
+          "https://api.commandcode.ai/alpha/whoami?limits=1",
+          {
+            headers: {
+              Authorization: `Bearer ${connection.apiKey}`,
+              Accept: "application/json",
+            },
+          },
+          effectiveProxy,
+        );
+        const valid = res.ok;
+        return {
+          valid,
+          error: valid
+            ? null
+            : res.status === 401 || res.status === 403
+              ? "Invalid API key"
+              : `Command Code API error (${res.status})`,
+        };
+      }
       case "cloudflare-ai": {
         const psd = connection.providerSpecificData || {};
         const accountId = psd.accountId;
@@ -643,7 +664,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       case "atria":
       case "agnes":
       case "bai":
-      case "muse": {
+      case "muse":
+      case "runcrate": {
         const cfg = PROVIDERS[connection.provider];
         const res = await fetchWithConnectionProxy(cfg.validateUrl, { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
@@ -771,6 +793,23 @@ case "llm7": {
           headers: { Authorization: `Bearer ${connection.apiKey}` },
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
+      }
+      case "sensenova": {
+        const validateUrl = PROVIDERS.sensenova?.validateUrl || "https://token.sensenova.cn/v1/models";
+        const res = await fetchWithConnectionProxy(validateUrl, {
+          method: "GET",
+          headers: {
+            Authorization: "Bearer " + connection.apiKey,
+            Accept: "application/json",
+          },
+        }, effectiveProxy);
+        const valid = res.ok;
+        return {
+          valid,
+          error: valid ? null : res.status === 401 || res.status === 403
+            ? "Invalid API key"
+            : `SenseNova API error (${res.status})`,
+        };
       }
       case "kimchi": {
         // Dual-auth: same validation endpoint as the OAuth flow — the token (API key

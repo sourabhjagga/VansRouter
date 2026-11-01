@@ -618,9 +618,13 @@ exports[`GOLDEN buildHeaders (default executor providers) > codebuddy-cn → hea
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "User-Agent": "CLI/2.108.1 CodeBuddy/2.108.1",
+    "X-Conversation-ID": "<UUID>",
+    "X-Conversation-Message-ID": "<UUID>",
+    "X-Conversation-Request-ID": "<UUID>",
     "X-IDE-Name": "CLI",
     "X-IDE-Type": "CLI",
     "X-Product": "SaaS",
+    "X-Request-ID": "<UUID>",
     "x-codebuddy-request": "1",
     "x-requested-with": "XMLHttpRequest",
   },
@@ -628,9 +632,13 @@ exports[`GOLDEN buildHeaders (default executor providers) > codebuddy-cn → hea
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "User-Agent": "CLI/2.108.1 CodeBuddy/2.108.1",
+    "X-Conversation-ID": "<UUID>",
+    "X-Conversation-Message-ID": "<UUID>",
+    "X-Conversation-Request-ID": "<UUID>",
     "X-IDE-Name": "CLI",
     "X-IDE-Type": "CLI",
     "X-Product": "SaaS",
+    "X-Request-ID": "<UUID>",
     "x-codebuddy-request": "1",
     "x-requested-with": "XMLHttpRequest",
   },
@@ -639,9 +647,13 @@ exports[`GOLDEN buildHeaders (default executor providers) > codebuddy-cn → hea
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "User-Agent": "CLI/2.108.1 CodeBuddy/2.108.1",
+    "X-Conversation-ID": "<UUID>",
+    "X-Conversation-Message-ID": "<UUID>",
+    "X-Conversation-Request-ID": "<UUID>",
     "X-IDE-Name": "CLI",
     "X-IDE-Type": "CLI",
     "X-Product": "SaaS",
+    "X-Request-ID": "<UUID>",
     "x-codebuddy-request": "1",
     "x-requested-with": "XMLHttpRequest",
   },
@@ -655,9 +667,13 @@ exports[`GOLDEN buildHeaders (default executor providers) > codebuddy-intl → h
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "User-Agent": "IDE/2.108.1 CodeBuddy/2.108.1",
+    "X-Conversation-ID": "<UUID>",
+    "X-Conversation-Message-ID": "<UUID>",
+    "X-Conversation-Request-ID": "<UUID>",
     "X-IDE-Name": "IDE",
     "X-IDE-Type": "IDE",
     "X-Product": "SaaS",
+    "X-Request-ID": "<UUID>",
     "x-codebuddy-request": "1",
     "x-requested-with": "XMLHttpRequest",
   },
@@ -665,9 +681,13 @@ exports[`GOLDEN buildHeaders (default executor providers) > codebuddy-intl → h
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "User-Agent": "IDE/2.108.1 CodeBuddy/2.108.1",
+    "X-Conversation-ID": "<UUID>",
+    "X-Conversation-Message-ID": "<UUID>",
+    "X-Conversation-Request-ID": "<UUID>",
     "X-IDE-Name": "IDE",
     "X-IDE-Type": "IDE",
     "X-Product": "SaaS",
+    "X-Request-ID": "<UUID>",
     "x-codebuddy-request": "1",
     "x-requested-with": "XMLHttpRequest",
   },
@@ -676,9 +696,13 @@ exports[`GOLDEN buildHeaders (default executor providers) > codebuddy-intl → h
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "User-Agent": "IDE/2.108.1 CodeBuddy/2.108.1",
+    "X-Conversation-ID": "<UUID>",
+    "X-Conversation-Message-ID": "<UUID>",
+    "X-Conversation-Request-ID": "<UUID>",
     "X-IDE-Name": "IDE",
     "X-IDE-Type": "IDE",
     "X-Product": "SaaS",
+    "X-Request-ID": "<UUID>",
     "x-codebuddy-request": "1",
     "x-requested-with": "XMLHttpRequest",
   },
@@ -1828,7 +1852,45 @@ exports[`GOLDEN buildHeaders (default executor providers) > qoder-cn → headers
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > runcrate → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > sambanova → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > sensenova → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -2781,10 +2843,24 @@ exports[`GOLDEN buildUrl (default executor providers) > qoder-cn → url (stream
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > runcrate → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.runcrate.ai/v1/chat/completions",
+  "stream": "https://api.runcrate.ai/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > sambanova → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.sambanova.ai/v1/chat/completions",
   "stream": "https://api.sambanova.ai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > sensenova → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://token.sensenova.cn/v1/chat/completions",
+  "stream": "https://token.sensenova.cn/v1/chat/completions",
 }
 `;
 

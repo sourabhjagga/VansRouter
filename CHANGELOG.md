@@ -1,3 +1,324 @@
+# v0.91.89 (2026-10-30)
+
+This release adds the hybrid feature pass on top of the v0.5.112 sync. The
+v0.91.88 release was prepared and merged but never tagged, so its content ships
+here: 49 upstream commits adopted, 21 deferred with a recorded reason in
+`.audit/sync-ledger-0.5.104-0.5.112.md`, and every commit in the range is
+accounted for. Fork-owned behavior is unchanged: per-key ACL, multiple
+connections per node, quota latest-wins/provider scoping, Proxy Fitness, and the
+Vercel/Cloudflare relay deploy modals.
+
+## Features
+
+- **Combo search** by combo name and member model id, with a filtered
+  select-all so bulk actions only touch visible rows.
+- **Pi per-model caps**: context-window and max-output selectors, validated
+  before write, with hand-set values preserved across Apply.
+- **Antigravity tier resolution** from the client's reasoning effort, suffix or
+  token budget; the fork keeps its probed `gemini-3.8-flash-tiered` wire ids.
+- **Quota table**: honours provider-reported remaining percentages and shows an
+  explicit empty-window message; adds a dedicated CommandCode
+  `/alpha/whoami?limits=1` connection probe. (The CommandCode usage service is
+  not wired in this fork, so only the shared table improvements and the probe
+  apply.)
+- **Ollama Cloud balance**: `/api/balance` session (5h), weekly (7d), allowance
+  and purchased-credit rows when `/api/usage` no longer reports limits.
+- **Ollama System One** decision models (`clef`, `clef-flash`) on Cloud and
+  Local, with the saved host joined to the registry path.
+- **Ollama embedding** adapter and model catalog.
+- **Ollama Local TTS** (Phonon) with per-model voice/format handling.
+- **Codex OAuth STT**: `cx/transcribe` through the fixed ChatGPT endpoint, with
+  ffmpeg audio conversion in the runtime image.
+- **RTK custom system prompt**: a user-authored instruction appended
+  independently of Caveman and Ponytail, with its own toggle and textarea.
+- **Combo empty-content fall-through**: a streaming member that returns 200 but
+  never emits content falls through to the next member instead of delivering an
+  empty answer.
+- **Monaco 0.57.0** pinned in the shared loader so the dashboard fetches the
+  patched build (DOMPurify 3.4.15) instead of the 0.55.1 CDN copy.
+
+## Reliability & Compatibility
+
+- The sync carries the v0.5.104 → v0.5.112 provider and translator fixes:
+  SenseNova, Runcrate, Nace Drex, Kimi K3.1 Pro, GPT-6.1 Terra, Kiro model-id
+  normalization, CodeBuddy headers/backoff, Gemini protobuf predicates, tool-call
+  id repair, NUL stripping, undici 7.30.1, and Node 22.23.4.
+- The Codex STT handler keeps the fork's ACL checks (`isProviderAllowed`,
+  `isKindAllowed`, `isTrustedInternalRequest`) and the per-connection base URL
+  override for every other STT provider.
+- The combo peek keeps the fork's per-model timeout race and request-scoped 4xx
+  fall-through.
+- `Dockerfile` keeps the fork entrypoint, Tailscale capabilities and migration
+  helper; only `ffmpeg` was added to the runtime packages.
+
+## Release Infrastructure
+
+- `publish-npm` treats npm's staged-publish window as accepted-but-not-yet
+  visible: a conflict is accepted only when it names the exact release version,
+  then integrity verification continues for 20 minutes inside a 35-minute job.
+  Any other version or error stays fatal. Documented in `.agent/cicd.md` with
+  the v0.91.87 evidence.
+
+## Tests
+
+- Full suite: 481 test files, 5115 tests passed, 121 skipped, 1 todo
+  (`CI=true pnpm test`, exit 0). Codex STT transport tests ran with a static
+  ffmpeg 7.0.2 in `PATH`.
+- `pnpm run lint` exit 0 (0 errors); `node scripts/lint-undef.cjs` and
+  `node scripts/lint-reacthooks.cjs` clean.
+- Production build: `SKIP_PREBUILD_LINT=1 pnpm build` exit 0, `✅ build
+  complete`, `.next/standalone/server.js` emitted.
+- New coverage: Pi caps (`cli-tools-generic-settings`), Antigravity tiers
+  (`gemini-38-integration`), Ollama balance/System One/embedding/TTS, Codex OAuth
+  STT, combo empty-content fall-through, and Monaco pinning.
+
+# v0.91.88 (2026-10-30)
+
+This release syncs the fork with upstream `decolua/9router` v0.5.104 → v0.5.112
+and finishes the provider batch that the sync introduced. 36 upstream commits
+are adopted and 34 are deferred with a recorded reason in
+`.audit/sync-ledger-0.5.104-0.5.112.md`; every upstream commit in the range is
+accounted for. Fork-owned behavior is unchanged: per-key ACL, multiple
+connections per node, quota latest-wins/provider scoping, Proxy Fitness, and the
+Vercel/Cloudflare relay deploy modals.
+
+## Features
+
+- **SenseNova** provider (`p163`) with its LLM and image lanes.
+- **Runcrate** provider (`p164`).
+- **Nace Drex** provider in the System One lane (`p165`); a saved host is joined
+  with the registry `path` instead of replacing it.
+- **Kimi K3.1 Pro** on CommandCode and OpenCode Go.
+- **GPT-6.1 Terra** on Codex.
+- Gemini and MITM image paths accept reference-image inputs (#4981).
+- Codex image generation skips ChatGPT Free accounts, uses a Go-compatible main
+  model, and drives `image_generation` from `gpt-6-sol`.
+
+## Reliability & Compatibility
+
+- Kiro: Anthropic model ids are normalized onto Kiro upstream aliases again;
+  `normalizeKiroUpstreamModelId` is restored for the Kiro test suite.
+- Thinking: a transport can declare its thinking shape, and OpenCode Go
+  `/responses` nests reasoning instead of flattening it.
+- CodeBuddy: back off blocked international connections, share the channel
+  request id on international requests, and send the plugin request/conversation
+  id headers.
+- Combos: advance to the next model when credits run out or a request-scoped 4xx
+  is returned instead of ending the combo.
+- Capabilities: Grok 4.7 500k context, refreshed Copilot fallback catalog,
+  `reasoning_effort` for `glm-5.3-flash-free`, `low|high|max` for OpenCode zen
+  `deepseek-v4.1-flash`, a 330k cap for `oc/deepseek-v4.1-flash-free`, the
+  upstream DeepSeek model id, `effort: max` for GPT-5.6/GPT-6 on OpenAI
+  Compatible nodes, adaptive thinking for Claude Haiku 5.5, and Claude 5.5
+  thinking rules for Copilot's dotted model ids.
+- Security: undici 7.30.1; the headroom server binds to loopback.
+- OpenAI: `max_tokens` is renamed to `max_completion_tokens` where required.
+- Search: the model-match regex state is reset between matches.
+- Database: NUL bytes are stripped from bound strings before SQLite writes.
+- Streaming: missing tool-call ids are filled and renamed tool names restored
+  (#4992, #4986); SSE errors in a non-streaming response are rejected.
+- Translators: `image_url` parts inside tool messages become Claude images;
+  Gemini protobuf type predicates are enforced on schema items and properties;
+  NVIDIA reasoning aliases are normalized for NIM.
+- Bulk add: `LLM|id|secret` is treated as an opaque token, not `name|key`.
+- Fallback: credit errors are classified as account-scoped.
+- Docker: Node 22.23.4 patches the October 2026 security CVEs.
+
+## Release Infrastructure
+
+- `publish-npm` now treats npm's staged-publish window as accepted-but-not-yet
+  visible. A publish that returns success while the version stays out of the
+  packument no longer fails the release, and a retry that gets
+  `E409 Cannot publish over previously staged version` for the exact release
+  version continues to integrity verification instead of failing. Any other
+  version or error stays fatal. The visibility wait is 20 minutes inside a
+  35-minute job.
+- Documented the rule in `.agent/cicd.md` with the v0.91.87 evidence: npm
+  `0.91.87` eventually became public, but its GHCR tag and GitHub Release were
+  never created because `publish-npm` failed at the 15-minute mark.
+- `pnpm-lock.yaml` now matches the `undici` `^7.30.1` security bump, so every
+  `--frozen-lockfile` CI job installs the patched release instead of failing at
+  install time.
+- The custom-logic label no longer lists ZCode; the sync skill and verifier now
+  separate fork-owned behavior, presentation/deployment config, and upstream
+  features.
+
+## Tests
+
+- Full suite: 470 test files, 4975 tests passed, 121 skipped, 1 todo
+  (`CI=true pnpm test`, exit 0).
+- `pnpm run lint` exit 0 (0 errors); `node scripts/lint-undef.cjs` and
+  `node scripts/lint-reacthooks.cjs` clean.
+- Production build: `SKIP_PREBUILD_LINT=1 pnpm build` exit 0, `✅ build
+  complete`, `.next/standalone/server.js` emitted.
+- `tests/unit/release-hardening.test.js` passes with the new publish-npm
+  handling.
+- The codex-image plan-gate mock now provides the ACL helpers the synced image
+  handler imports.
+
+# v0.91.87 (2026-10-29)
+
+v0.91.86 moved the build into a separate staging package to keep the public
+package clean, but GitHub creates that package with the repository's public
+visibility and exposes no API to change it. This release removes the staging
+package entirely: the build pushes the multi-arch index to the public package
+by digest only, and promotion attaches the version tag and `latest` to that
+same digest.
+
+## Release engineering
+
+- The build no longer pushes a tag. `docker/build-push-action` publishes the
+  index with `push-by-digest=true`; the `promote-ghcr` job tags that exact
+  digest as `X.Y.Z` and `latest`. An unverified image therefore never carries
+  a user-facing tag, and the package contains no `staging`,
+  `sha256-<digest>` or `release-*` tag.
+- The attestation remains in GitHub's attestation store
+  (`push-to-registry: false`) and is verified with `gh attestation verify`;
+  the image index keeps the Buildx provenance and SBOM. Verified for v0.91.86:
+  one attestation, subject `ghcr.io/vanszs/vansrouter`, digest matching the
+  published image.
+- The `ghcr.io/vanszs/vansrouter-staging` package from v0.91.86 was removed;
+  the public v0.91.86 image is unaffected.
+
+## Tests
+
+- `tests/unit/release-hardening.test.js` pins the digest-only build
+  (`push-by-digest=true`), same-repository promotion
+  (`${GHCR_IMAGE}@${STAGING_DIGEST}`), and the absence of a staging package.
+- Full suite: 445 test files, 4733 tests passed, 121 skipped, 1 todo
+  (`CI=true pnpm test`, exit 0).
+- `pnpm run lint` exit 0 (0 errors); `node scripts/lint-undef.cjs` and
+  `node scripts/lint-reacthooks.cjs` clean.
+- Production build: `SKIP_PREBUILD_LINT=1 pnpm build` exit 0, `✅ build
+  complete`, `.next/standalone/server.js` emitted.
+
+# v0.91.86 (2026-10-29)
+
+v0.91.85 stopped the per-run tag leak by pushing every build to a single
+`ghcr.io/vanszs/vansrouter:staging` tag. That fixed tag growth but left a
+mutable tag in the public package, and the `sha256-<digest>` attestation
+version sorted ahead of the release: the GitHub package page labelled the
+attestation "Latest" and its default pull command fetched the attestation
+instead of the image. This release moves the build out of the public package.
+
+## Release engineering
+
+- Builds now push to the separate, private package
+  `ghcr.io/vanszs/vansrouter-staging` under its fixed `staging` tag. All
+  verification still reads the Buildx digest, and promotion copies that exact
+  digest into `ghcr.io/vanszs/vansrouter` as the version tag and `latest`. The
+  public package therefore contains released images only: no `staging` tag and
+  no attestation tag are visible to users.
+- The image attestation is stored by GitHub (`push-to-registry: false`)
+  instead of being pushed as a public `sha256-<digest>` tag. `gh attestation
+  verify` reads it from GitHub's attestation store; verified against v0.91.85
+  after its registry attestation tags were removed. The image index still
+  embeds the Buildx provenance and SBOM.
+- Cross-repository promotion was verified before this release: copying the
+  multi-arch index from the staging package to the public package preserves
+  the digest (`sha256:b606b855…` for v0.91.81), so promotion still compares a
+  single digest end to end.
+- The staging package is internal and may be pruned; the public package is
+  never pruned per version.
+
+## Tests
+
+- `tests/unit/release-hardening.test.js` pins the new contract: the build tags
+  the staging package, promotion reads
+  `${GHCR_STAGING_IMAGE}@${STAGING_DIGEST}`, and the attestation is not pushed
+  to the registry.
+- Full suite: 445 test files, 4733 tests passed, 121 skipped, 1 todo
+  (`CI=true pnpm test`, exit 0).
+- `pnpm run lint` exit 0 (0 errors); `node scripts/lint-undef.cjs` and
+  `node scripts/lint-reacthooks.cjs` clean.
+- Production build: `SKIP_PREBUILD_LINT=1 pnpm build` exit 0, `✅ build
+  complete`, `.next/standalone/server.js` emitted.
+
+# v0.91.85 (2026-10-29)
+
+Version numbers 0.91.82, 0.91.83 and 0.91.84 were never tagged and never
+released; this release follows v0.91.81 directly. The date gap is real, the
+version gap is not: nothing was published under those numbers.
+
+## Fixed
+
+- **Provider limits could show the wrong provider.** A quota refresh started
+  before a filter change could resolve after it and overwrite the filtered
+  list, so selecting Antigravity and refreshing sometimes rendered Codex rows
+  while the filter still said Antigravity. Connection fetches are now
+  latest-wins, `initializeData` is cancelled on effect cleanup, `refreshAll` is
+  guarded by a ref, and the rendered rows are scoped to the active provider as
+  a final invariant. The dashboard also follows URL provider changes after
+  mount and marks connection/quota reads `no-store`. Reproduced with a delayed
+  unfiltered response; a regression test covers the tracker and the scoping.
+- **Non-streaming Claude responses named the wrong model.** The provider →
+  OpenAI pivot → Claude path passed `openaiBody.model`, so a client asking for
+  one model could get a response that named another (or none). The requested
+  model is now threaded through `translateNonStreamingResponse`.
+- **Claude non-streaming conversion alignment.** OpenAI finish reasons are
+  mapped through `fromOpenAIFinish`, so forced SSE → JSON Claude clients get
+  `max_tokens` instead of an invalid `length`. The OpenAI → Claude completion
+  converter lives in `translator/concerns` and returns the client shape.
+  `context_management` is stripped for non-Anthropic Claude transports, which
+  rejected it with a 400. Blank thinking blocks are dropped while
+  `redacted_thinking` is preserved.
+- **Vercel and Cloudflare relay deploy modals crashed the proxy-pools page**
+  (issue #185). `RelayDeployModal` read `tokenSteps.length` unconditionally
+  although only the Deno and Netlify call sites pass the prop, and PropTypes
+  already marked it optional; the component now defaults it to `[]`. The
+  Vercel and Cloudflare modals render again, and the token-steps section stays
+  hidden for an empty pool.
+- **CodeBuddy Intl rejected every request with HTTP 400 code 11128**
+  ("conversation id missing"). The intl gateway now requires the
+  `X-Conversation-*` header family the official IDE sends on every turn, so
+  `CodeBuddyIntlExecutor` derives a stable RFC-4122-v5-shaped conversation id
+  from the client's session key (falling back to the opening user message,
+  then a random UUID) and adds fresh request and message ids. Verified A/B
+  against the live upstream: same credentials and body, headers absent →
+  11128, headers present → 200 SSE. `codebuddy-cn` is not gated yet and is
+  unchanged.
+
+## Release engineering
+
+- **npm publish no longer fails its own verification.** The registry accepts a
+  publish before the version is readable; v0.91.81's post-publish check failed
+  after 12 attempts × 5 s even though the version appeared about nine minutes
+  later with the expected integrity. The verify loop now polls 60 times at
+  15 s (bounded at ~15 minutes), the job timeout is 25 minutes so the wait
+  cannot outlive it, and a version that lands between the lookup and the
+  publish call (`403 previously published versions`) is settled by matching
+  the integrity instead of failing a release that did publish.
+- **GHCR stops accumulating one orphan tag per release.** The build pushed a
+  unique `release-<run_id>-<run_attempt>` staging tag, but nothing reads the
+  staging tag by name — manifest verification, SQLite inspection, both
+  platform smoke tests and digest promotion all use the Buildx digest, and the
+  `release` concurrency group serializes runs. The staging image is now pushed
+  under the single fixed tag `ghcr.io/vanszs/vansrouter:staging`, and the
+  invariant is recorded in `.agent/cicd.md`.
+
+## Tests
+
+- Full suite: 445 test files, 4733 tests passed, 121 skipped, 1 todo
+  (`CI=true pnpm test`, exit 0).
+- New regression tests: quota latest-wins tracker and provider scoping (4),
+  Claude non-streaming model echo, Claude context-management/empty-thinking
+  handling, CodeBuddy Intl conversation headers (5 cases), the
+  proxy-pools modal with omitted/populated/empty `tokenSteps`, and the npm
+  visibility window in the release workflow contract.
+- `pnpm run lint` exit 0 (0 errors); `node scripts/lint-undef.cjs` and
+  `node scripts/lint-reacthooks.cjs` clean.
+- Production build: `SKIP_PREBUILD_LINT=1 pnpm build` exit 0, `✅ build
+  complete`, `.next/standalone/server.js` emitted.
+
+## Known follow-ups
+
+- The 20 per-run `release-*` tags that GHCR accumulated before this fix are
+  still present. Removing them needs a token with `read:packages` and
+  `delete:packages` and must be done **per tag, never per package version**:
+  `0.91.81`, `latest` and `release-39924972292-1` share one digest, so deleting
+  the version would destroy a real release. This fix stops the growth; it does
+  not clean the backlog.
+
 # v0.91.81 (2026-10-23)
 
 The `v0.91.80` tag points at a commit on `main`, but that tag never produced a
