@@ -56,8 +56,6 @@ services:
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
-      # Headroom sidecar URL (internal Docker network, not host port)
-      HEADROOM_URL: http://headroom:8787
       # The following are injected from Coolify Environment Variables.
       # Fallbacks below are for local docker compose up only; set real values in Coolify.
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret}
@@ -66,11 +64,7 @@ services:
       BASE_URL: ${BASE_URL:-http://localhost:20128}
       NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL:-http://localhost:20128}
       CLOUD_URL: ${CLOUD_URL:-https://9router.com}
-      NEXT_PUBLIC_CLOUD_URL: ${NEXT_PUBLIC_CLOUD_URL:-https://9router.com}
-    depends_on:
-      headroom:
-        condition: service_started
-    healthcheck:
+      NEXT_PUBLIC_CLOUD_URL: ${NEXT_PUBLIC_CLOUD_URL:-https://9router.com}    healthcheck:
       # Coolify-compatible healthcheck. /api/ready runs `SELECT 1` against SQLite and
       # returns 503 if the DB is unreachable, so this catches a broken/empty 9router-data
       # volume. The root path / is not used: it returns an app-level 421.
@@ -85,22 +79,6 @@ services:
     labels:
       - coolify.managed=true
 
-  headroom:
-    image: ghcr.io/chopratejas/headroom:latest
-    pull_policy: always
-    container_name: headroom
-    restart: unless-stopped
-    ports:
-      # Host 8788 -> Container 8787 (8787 already used by headroom-proxy on localhost)
-      - "0.0.0.0:${HEADROOM_PORT:-8788}:8787"
-    networks:
-      - coolify
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
 volumes:
   9router-data:
