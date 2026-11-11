@@ -13,9 +13,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: upstream-sync
-  cancel-in-progress: false
 
 jobs:
   sync:
