@@ -1,8 +1,6 @@
 name: Deploy & Verify
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -96,3 +94,4 @@ jobs:
           echo "::error::Deployment failed. oc-deploy.sh on the VPS already attempted rollback to the last good commit."
           echo "Check the VPS logs and Coolify dashboard for details."
           exit 1
+

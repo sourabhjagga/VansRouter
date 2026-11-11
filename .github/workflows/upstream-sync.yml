@@ -93,6 +93,17 @@ jobs:
             bash .fork/sync-upstream-workflows.sh
           fi
 
+          # === NEW: Remove headroom from docker-compose.yaml ===
+          python3 -c "
+import re
+s=open('docker-compose.yaml').read()
+s=re.sub(r'\n  headroom:.*?(?=\n(?:  [a-z]|\nvolumes:))', '', s, flags=re.DOTALL)
+s=re.sub(r'HEADROOM_URL:.*\n', '', s)
+s=re.sub(r'depends_on:\n\s+headroom:\n\s+condition: service_started\n', '', s)
+open('docker-compose.yaml','w').write(s)
+import re
+          "
+
           git add -A
           if git diff --cached --quiet; then
             echo "Nothing to commit after merge."
@@ -100,42 +111,24 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore: merge upstream $TAG"
+          git commit -m "chore: merge upstream $TAG + remove headroom"
           echo "do_sync=true" >> "$GITHUB_OUTPUT"
-          echo "Merged $TAG successfully."
+          echo "Merged $TAG successfully (headroom removed)."
 
-      - name: Push
+      - name: Push & Label for Soak
         if: steps.sync.outputs.do_sync == 'true'
-        run: git push origin main
+        run: |
+          git push origin main
+          # Add 48h soak label to the merge commit
+          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/labels \
+            -X POST -f labels='["soak-48h"]' || true
 
       # GitHub does not create new workflow runs for pushes made with the
       # repository's own GITHUB_TOKEN (documented anti-recursion behavior).
-      # The Deploy & Verify workflow triggers on `push`, so that push above
-      # never reaches it. We therefore trigger it explicitly via the
-      # workflow_dispatch REST API, which always creates a run.
-      # This requires no extra secret: the default GITHUB_TOKEN has
-      # `actions:write` scope for workflow_dispatch calls on the same repo.
-      - name: Trigger Deploy & Verify
+      # The Soak Timer workflow triggers on push + label, so that push above
+      # will trigger the Soak Timer workflow.
+      - name: Notify
         if: steps.sync.outputs.do_sync == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          echo "Dispatching Deploy & Verify via workflow_dispatch API..."
-          for attempt in 1 2 3; do
-            code=$(curl -s -o /tmp/dispatch_resp.json -w "%{http_code}" -X POST \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "Content-Type: application/json" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/deploy-verify.yml/dispatches" \
-              -d '{"ref":"main"}')
-            echo "Attempt ${attempt}: HTTP ${code} $(cat /tmp/dispatch_resp.json)"
-            if [ "$code" = "204" ]; then
-              echo "Deploy & Verify dispatched successfully."
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::Failed to dispatch Deploy & Verify (expected 204)."
-          echo "The merge is pushed but NOT deployed — run Deploy & Verify manually from the Actions tab."
-          exit 1
+          echo "Merge pushed with soak-48h label. Soak Timer workflow will wait 48h then trigger Deploy & Verify."
+
