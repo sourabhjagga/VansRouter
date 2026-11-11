@@ -39,16 +39,10 @@ services:
     container_name: vansrouter
     restart: unless-stopped
     ports:
-      # Bind to all interfaces (0.0.0.0) so other Oracle server over Tailscale can connect.
-      # Host port 20128 verified free on both servers (checked Coolify API).
       - "0.0.0.0:${PORT:-20128}:20128"
     volumes:
       - 9router-data:/app/data
-      # Compatibility source for pre-v0.91.22 named-volume installs (see upstream docker-compose.yml).
-      # The entrypoint copies only missing files into the canonical volume.
       - vansrouter-data:/migration-data:ro
-      # Optional: reuse host Tailscale socket instead of bundled daemon (uncomment if needed):
-      # - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock
     env_file:
       - .env
     environment:
@@ -56,29 +50,23 @@ services:
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
-      # The following are injected from Coolify Environment Variables.
-      # Fallbacks below are for local docker compose up only; set real values in Coolify.
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret}
       INITIAL_PASSWORD: ${INITIAL_PASSWORD:-123456}
       API_KEY_SECRET: ${API_KEY_SECRET:-change-me-in-production}
       BASE_URL: ${BASE_URL:-http://localhost:20128}
       NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL:-http://localhost:20128}
       CLOUD_URL: ${CLOUD_URL:-https://9router.com}
-      NEXT_PUBLIC_CLOUD_URL: ${NEXT_PUBLIC_CLOUD_URL:-https://9router.com}    healthcheck:
-      # Coolify-compatible healthcheck. /api/ready runs `SELECT 1` against SQLite and
-      # returns 503 if the DB is unreachable, so this catches a broken/empty 9router-data
-      # volume. The root path / is not used: it returns an app-level 421.
+      NEXT_PUBLIC_CLOUD_URL: ${NEXT_PUBLIC_CLOUD_URL:-https://9router.com}
+    healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:20128/api/ready"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
-    # Ensure Coolify network access
     networks:
       - coolify
     labels:
       - coolify.managed=true
-
 
 volumes:
   9router-data:
@@ -90,4 +78,3 @@ networks:
   coolify:
     external: true
     name: coolify
-
