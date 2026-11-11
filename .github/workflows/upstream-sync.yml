@@ -1,4 +1,3 @@
-# Updated to force re-registration
 name: Upstream Sync
 
 on:
@@ -102,7 +101,6 @@ s=re.sub(r'\n  headroom:.*?(?=\n(?:  [a-z]|\nvolumes:))', '', s, flags=re.DOTALL
 s=re.sub(r'HEADROOM_URL:.*\n', '', s)
 s=re.sub(r'depends_on:\n\s+headroom:\n\s+condition: service_started\n', '', s)
 open('docker-compose.yaml','w').write(s)
-import re
           "
 
           git add -A
