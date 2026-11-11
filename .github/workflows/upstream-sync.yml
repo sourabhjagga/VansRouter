@@ -23,5 +23,101 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Test step
-        run: echo "Test workflow dispatch works!"
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/Vanszs/VansRouter.git 2>/dev/null || \
+            git remote set-url upstream https://github.com/Vanszs/VansRouter.git
+          git fetch upstream --tags
+
+      - name: Find latest upstream tag
+        id: tag
+        run: |
+          set -euo pipefail
+          TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$TAG" ]; then
+            echo "No upstream v* tags found"; exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream tag: $TAG"
+
+      - name: Sync (merge + reconcile + commit)
+        id: sync
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          FORCE="${{ github.event.inputs.force || 'false' }}"
+
+          if git merge-base --is-ancestor "$TAG" HEAD; then
+            echo "do_sync=false" >> "$GITHUB_OUTPUT"
+            echo "$TAG is already an ancestor of main - nothing to do."
+            exit 0
+          fi
+
+          tag_date=$(git log -1 --format=%ct "$TAG" 2>/dev/null || echo 0)
+          now=$(date +%s)
+          age=$((now - tag_date))
+          echo "Tag $TAG age: $((age/3600))h"
+          if [ "$FORCE" != "true" ] && [ "$age" -lt 86400 ]; then
+            echo "do_sync=false" >> "$GITHUB_OUTPUT"
+            echo "Tag is < 24h old - soaking. Re-run with force=true to override."
+            exit 0
+          fi
+
+          merge_failed=0
+          git merge --no-ff --no-commit "$TAG" || merge_failed=1
+
+          if [ "$merge_failed" = "1" ]; then
+            git diff --name-only --diff-filter=U | grep '^\.github/workflows/' | while read -r f; do
+              git rm -f -- "$f"
+            done
+            remaining=$(git diff --name-only --diff-filter=U)
+            if [ -n "$remaining" ]; then
+              echo "Real (non-workflow) conflicts remain:"
+              echo "$remaining"
+              git merge --abort
+              exit 1
+            fi
+          fi
+
+          if [ -x .fork/sync-upstream-workflows.sh ]; then
+            bash .fork/sync-upstream-workflows.sh
+          fi
+
+          # === NEW: Remove headroom from docker-compose.yaml ===
+          python3 -c "
+import re
+s=open('docker-compose.yaml').read()
+s=re.sub(r'\n  headroom:.*?(?=\n(?:  [a-z]|\nvolumes:))', '', s, flags=re.DOTALL)
+s=re.sub(r'HEADROOM_URL:.*\n', '', s)
+s=re.sub(r'depends_on:\n\s+headroom:\n\s+condition: service_started\n', '', s)
+open('docker-compose.yaml','w').write(s)
+          "
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing to commit after merge."
+            echo "do_sync=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git commit -m "chore: merge upstream $TAG + remove headroom"
+          echo "do_sync=true" >> "$GITHUB_OUTPUT"
+          echo "Merged $TAG successfully (headroom removed)."
+
+      - name: Push & Label for Soak
+        if: steps.sync.outputs.do_sync == 'true'
+        run: |
+          git push origin main
+          # Add 48h soak label to the merge commit
+          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/labels \
+            -X POST -f labels='["soak-48h"]' || true
+
+      - name: Notify
+        if: steps.sync.outputs.do_sync == 'true'
+        run: |
+          echo "Merge pushed with soak-48h label. Soak Timer workflow will wait 48h then trigger Deploy & Verify."
