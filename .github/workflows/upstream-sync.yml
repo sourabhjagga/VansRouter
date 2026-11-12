@@ -112,8 +112,19 @@ open('docker-compose.yaml','w').write(s)
 
       - name: Push & Label for Soak
         if: steps.sync.outputs.do_sync == 'true'
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          git push origin main
+          # Push with a personal access token, not the default GITHUB_TOKEN.
+          # GitHub does not fire workflows for a push made with GITHUB_TOKEN,
+          # so the Soak Timer below would never start and the merged upstream
+          # would sit undeployed. A PAT push is an ordinary push.
+          if [ -n "${GH_PAT:-}" ]; then
+            git push "https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}.git" main
+          else
+            echo "::warning::GH_PAT is not set, pushing with the default token; no deploy will follow"
+            git push origin main
+          fi
           # Add 48h soak label to the merge commit
           gh api repos/${{ github.repository }}/commits/${{ github.sha }}/labels \
             -X POST -f labels='["soak-48h"]' || true
