@@ -21,6 +21,8 @@ minimumReleaseAgeExclude:
   - dompurify
   # Renovate security update: vitest@4.1.11
   - vitest@4.1.11
+  # Renovate security update: node-forge@1.4.3
+  - node-forge@1.4.3
 
 onlyBuiltDependencies:
   - better-sqlite3
