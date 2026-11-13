@@ -21,6 +21,8 @@ minimumReleaseAgeExclude:
   - dompurify
   # Renovate security update: vitest@4.1.11
   - vitest@4.1.11
+  # Renovate security update: js-yaml@4.3.2
+  - js-yaml@4.3.2
 
 onlyBuiltDependencies:
   - better-sqlite3
