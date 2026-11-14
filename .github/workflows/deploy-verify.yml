@@ -1,6 +1,15 @@
 name: Deploy & Verify
 
+# Deploys on every push to main. An AI agent, a person or the nightly upstream
+# merge all reach production the same way, with no waiting period.
+#
+# The soak that used to sit between an upstream merge and its deploy is gone: the
+# upstream workflow now refuses any release younger than 96 hours, which is a
+# longer and better-defined bake than the old 48 hour timer.
+
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
